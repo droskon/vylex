@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>UzayHat // P2P Sohbet</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#161b21; --line:#232a32;
+    --accent:#5ee6c8; --text:#eef2f4; --muted:#7f8a94;
+    --mono:'JetBrains Mono',Consolas,monospace; --sans:-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); height:100dvh; overflow:hidden; }
+  .app{ display:flex; flex-direction:column; height:100%; max-width:900px; margin:0 auto; }
+  header{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); }
+  header b{ font-family:var(--mono); }
+  #status{ font-family:var(--mono); font-size:11px; color:var(--muted); padding:4px 10px; border:1px solid var(--line); border-radius:999px; }
+  #status.live{ color:var(--accent); border-color:#5ee6c855; }
+
+  #connect{ flex:1; display:flex; align-items:center; justify-content:center; padding:20px; overflow-y:auto; }
+  .card{ width:100%; max-width:440px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:24px; }
+  .card h1{ font-size:18px; margin:0 0 6px; font-family:var(--mono); }
+  .card p{ color:var(--muted); font-size:12.5px; margin:0 0 14px; line-height:1.5; }
+  input, textarea{ width:100%; padding:11px; border-radius:10px; background:#0d1114; border:1px solid var(--line); color:var(--text); font-size:13px; margin-bottom:8px; font-family:var(--sans); }
+  textarea{ font-family:var(--mono); font-size:11px; min-height:70px; resize:vertical; }
+  input:focus, textarea:focus{ outline:none; border-color:var(--accent); }
+  button{ font-family:var(--sans); cursor:pointer; border:none; width:100%; padding:12px; border-radius:10px; font-weight:600; font-size:13.5px; }
+  .primary{ background:var(--accent); color:#04211c; margin-bottom:8px; }
+  .ghost{ background:transparent; border:1px solid var(--line); color:var(--text); margin-bottom:8px; }
+  .myid{ font-family:var(--mono); color:var(--accent); font-size:13px; margin:6px 0; word-break:break-all; }
+  .fallback{ display:none; margin-top:14px; border-top:1px solid var(--line); padding-top:14px; }
+  .fallback.show{ display:block; }
+  .fallback summary{ cursor:pointer; font-size:12px; color:var(--muted); font-family:var(--mono); margin-bottom:10px; }
+  label{ display:block; font-size:11px; color:var(--muted); margin:8px 0 4px; font-family:var(--mono); }
+
+  #chat{ flex:1; display:none; flex-direction:column; min-height:0; }
+  #chat.active{ display:flex; }
+  .callbar{ display:none; gap:8px; padding:8px 10px; border-bottom:1px solid var(--line); background:#0a0d10; }
+  .callbar.active{ display:flex; }
+  .callbar button{ width:auto; padding:8px 12px; font-size:12px; }
+  .videos{ display:none; gap:8px; padding:8px; background:#0a0d10; }
+  .videos.show{ display:flex; }
+  .videos.audio-only video{ display:none; }
+  .videos.audio-only{ padding:10px 12px; }
+  .videos video{ width:160px; aspect-ratio:4/3; background:#000; border-radius:10px; object-fit:cover; }
+  #localVideo{ transform:scaleX(-1); }
+  .call-indicator{ display:none; font-size:12px; color:var(--accent); font-family:var(--mono); align-items:center; gap:8px; }
+  .videos.audio-only .call-indicator{ display:flex; }
+  #messages{ flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:8px; }
+  .row{ display:flex; }
+  .row.me{ justify-content:flex-end; }
+  .bubble{ max-width:75%; padding:9px 13px; border-radius:14px; background:var(--panel); border:1px solid var(--line); font-size:14px; white-space:pre-wrap; word-wrap:break-word; }
+  .row.me .bubble{ background:#1c3d38; border-color:#2c5b52; }
+  .bubble img{ max-width:100%; border-radius:8px; margin-top:4px; }
+  .sys{ align-self:center; font-size:11px; color:var(--muted); font-family:var(--mono); }
+  .composer{ display:flex; gap:8px; padding:10px; border-top:1px solid var(--line); }
+  .composer input{ margin:0; flex:1; }
+  .composer button{ width:auto; padding:12px 16px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><b>🛰️ UzayHat</b><span id="status">Bağlı değil</span></header>
+
+  <div id="connect">
+    <div class="card">
+      <h1>P2P Sohbet</h1>
+      <p>4 haneli bir oda numarası belirle ve karşı tarafla paylaş. İkiniz de aynı numarayı girince otomatik bağlanırsınız.</p>
+      <p style="color:#ff8a5c">📌 Kamera/mikrofon izninin çıkması için dosyayı indirip tarayıcıda doğrudan açman gerekir (önizleme penceresinde izin sorulmaz).</p>
+      <input id="myName" placeholder="Adın">
+      <label>Oda numarası (4 hane, ikiniz de aynısını girin):</label>
+      <input id="roomCode" placeholder="Örn: 4821" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+      <button class="primary" id="btnJoinRoom">Odaya Gir</button>
+      <div class="myid" id="roomStatus"></div>
+
+      <details class="fallback" id="fallbackBox">
+        <summary>⚠️ Oda numarası çalışmıyorsa: manuel yöntem</summary>
+        <div id="manualUI"></div>
+      </details>
+    </div>
+  </div>
+
+  <div id="chat">
+    <div class="callbar" id="callbar">
+      <button class="ghost" id="btnCallAudio">🎧 Sesli Ara</button>
+      <button class="ghost" id="btnCallVideo">🎥 Görüntülü Ara</button>
+      <button class="ghost" id="btnHangup" style="display:none">🔴 Kapat</button>
+    </div>
+    <div class="videos" id="videos">
+      <span class="call-indicator">🎧 Sesli görüşme aktif</span>
+      <video id="remoteVideo" autoplay playsinline></video>
+      <video id="localVideo" autoplay playsinline muted></video>
+    </div>
+    <div id="messages"></div>
+    <div class="composer">
+      <input id="msgInput" placeholder="Mesaj yaz...">
+      <button class="ghost" id="btnFile">📎</button>
+      <input type="file" id="fileInput" accept="image/*" style="display:none">
+      <button class="primary" id="btnSend">Gönder</button>
+    </div>
+  </div>
+</div>
+
+<audio id="ringAudio" style="display:none"></audio>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let myName = '', peerName = 'Karşı taraf', conn = null, peer = null;
+  let localStream = null, currentCall = null;
+
+  // TURN sunucusu: her iki taraf da NAT arkasındaysa (ev/mobil ağ) veri bu
+  // röle üzerinden akar, dünyanın her yerinden bağlantı garanti olur.
+  const rtcConfig = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'turn:standard.relay.metered.ca:80', username: 'e8dd90a7dd8226cf1d5c0ba0', credential: 'S9v5r0oJ8pKgU9nZ' },
+      { urls: 'turn:standard.relay.metered.ca:443', username: 'e8dd90a7dd8226cf1d5c0ba0', credential: 'S9v5r0oJ8pKgU9nZ' }
+    ]
+  };
+
+  function initPeer(room){
+    // odadaki host'un ID'si sabit ve tahmin edilebilir: uzayhat-<oda>-host
+    // İlk giren bu ID'yi alır ve host olur. İkinci giren ID doluyu görür,
+    // bu da host'un zaten orada olduğu anlamına gelir, ona bağlanır.
+    const hostId = 'uzayhat-' + room + '-host';
+    tryAsHost(hostId);
+  }
+
+  function tryAsHost(hostId){
+    peer = new Peer(hostId, { config: rtcConfig, debug: 1 });
+    peer.on('open', () => {
+      $('roomStatus').textContent = 'Oda hazır, karşı taraf bekleniyor...';
+      $('status').textContent = 'Hazır';
+    });
+    peer.on('connection', c => {
+      myName = $('myName').value.trim() || 'Sen';
+      peerName = c.metadata?.name || 'Karşı taraf';
+      setupConn(c);
+    });
+    peer.on('call', call => {
+      const mode = call.metadata?.mode === 'video' ? 'video' : 'audio';
+      if (!confirm((mode === 'video' ? 'Görüntülü' : 'Sesli') + ' arama geliyor, kabul et?')){ call.close(); return; }
+      startMedia(mode === 'video').then(stream => {
+        call.answer(stream);
+        wireCall(call);
+      }).catch(() => { addSys('Kamera/mikrofon izni reddedildi.'); call.close(); });
+    });
+    peer.on('disconnected', () => peer.reconnect());
+    peer.on('error', err => {
+      console.error(err);
+      if (err.type === 'unavailable-id'){
+        // host ID'si dolu: demek ki karşı taraf zaten host olarak orada, ona bağlanıyoruz
+        joinAsGuest(hostId);
+      } else if (['network','server-error','socket-error','socket-closed'].includes(err.type)){
+        $('status').textContent = 'Kolay bağlantı sunucusuna ulaşılamıyor';
+        $('fallbackBox').classList.add('show');
+        $('fallbackBox').open = true;
+      }
+    });
+  }
+
+  function joinAsGuest(hostId){
+    peer = new Peer({ config: rtcConfig, debug: 1 });
+    peer.on('open', () => {
+      $('roomStatus').textContent = 'Odaya bağlanılıyor...';
+      myName = $('myName').value.trim() || 'Sen';
+      setupConn(peer.connect(hostId, { metadata: { name: myName }, reliable: true }));
+    });
+    peer.on('call', call => {
+      const mode = call.metadata?.mode === 'video' ? 'video' : 'audio';
+      if (!confirm((mode === 'video' ? 'Görüntülü' : 'Sesli') + ' arama geliyor, kabul et?')){ call.close(); return; }
+      startMedia(mode === 'video').then(stream => {
+        call.answer(stream);
+        wireCall(call);
+      }).catch(() => { addSys('Kamera/mikrofon izni reddedildi.'); call.close(); });
+    });
+    peer.on('disconnected', () => peer.reconnect());
+    peer.on('error', err => {
+      console.error(err);
+      if (['network','server-error','socket-error','socket-closed'].includes(err.type)){
+        $('status').textContent = 'Kolay bağlantı sunucusuna ulaşılamıyor';
+        $('fallbackBox').classList.add('show');
+        $('fallbackBox').open = true;
+      } else if (err.type === 'peer-unavailable'){
+        // host tam o anda henüz kaydolmamış olabilir, kısa bir gecikmeyle tekrar dene
+        $('roomStatus').textContent = 'Bağlanılıyor, tekrar deneniyor...';
+        setTimeout(() => {
+          peer.destroy();
+          joinAsGuest(hostId);
+        }, 1500);
+      }
+    });
+  }
+
+  $('btnJoinRoom').addEventListener('click', () => {
+    const room = $('roomCode').value.trim();
+    if (!/^\d{4}$/.test(room)){ $('roomStatus').textContent = 'Lütfen 4 haneli bir sayı gir.'; return; }
+    myName = $('myName').value.trim() || 'Sen';
+    $('btnJoinRoom').disabled = true;
+    $('roomStatus').textContent = 'Bağlanılıyor...';
+    initPeer(room);
+  });
+
+  function setupConn(c){
+    conn = c;
+    conn.on('open', () => {
+      $('status').textContent = 'Bağlandı'; $('status').classList.add('live');
+      $('connect').style.display = 'none';
+      $('chat').classList.add('active');
+      $('callbar').classList.add('active');
+      conn.send({ type:'hello', name: myName });
+      addSys('Bağlantı kuruldu 🎉');
+    });
+    conn.on('data', handleData);
+    conn.on('close', () => { $('status').textContent = 'Bağlantı kapandı'; $('status').classList.remove('live'); addSys('Karşı taraf ayrıldı.'); });
+  }
+
+  function handleData(msg){
+    if (msg.type === 'hello') peerName = msg.name || 'Karşı taraf';
+    if (msg.type === 'text') addMsg(msg.text, false);
+    if (msg.type === 'image') addImg(msg.data, false);
+  }
+
+  // ---------- sesli / görüntülü arama ----------
+  async function startMedia(video){
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video });
+    if (video){ $('localVideo').srcObject = localStream; }
+    $('videos').classList.add('show');
+    $('videos').classList.toggle('audio-only', !video);
+    return localStream;
+  }
+  function wireCall(call){
+    currentCall = call;
+    call.on('stream', remoteStream => {
+      $('remoteVideo').srcObject = remoteStream;
+      $('status').textContent = 'Görüşme aktif';
+    });
+    call.on('close', endCall);
+    call.on('error', err => { console.error(err); addSys('Görüşme hatası: ' + err.message); endCall(); });
+    $('btnHangup').style.display = 'inline-flex';
+    $('btnCallAudio').style.display = 'none';
+    $('btnCallVideo').style.display = 'none';
+    addSys('Görüşme başlatılıyor...');
+  }
+  function endCall(){
+    if (localStream){ localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+    $('localVideo').srcObject = null; $('remoteVideo').srcObject = null;
+    $('videos').classList.remove('show', 'audio-only');
+    $('btnHangup').style.display = 'none';
+    $('btnCallAudio').style.display = 'inline-flex';
+    $('btnCallVideo').style.display = 'inline-flex';
+    currentCall = null;
+    $('status').textContent = 'Bağlandı';
+    addSys('Görüşme sona erdi.');
+  }
+  async function makeCall(video){
+    if (!conn){ addSys('Önce karşı tarafa bağlanmalısın.'); return; }
+    if (!conn.peer){ addSys('Arama sadece kolay bağlantı modunda çalışır (manuel modda desteklenmiyor).'); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      addSys('Bu ortam kamera/mikrofona izin vermiyor. Dosyayı indirip tarayıcıda doğrudan açman veya bir web sunucusundan (https) yüklemen gerekiyor.');
+      return;
+    }
+    let stream;
+    try { stream = await startMedia(video); }
+    catch(err){
+      console.error(err);
+      if (err.name === 'NotAllowedError') addSys('Kamera/mikrofon izni reddedildi. Tarayıcı adres çubuğundaki kilit simgesinden izin verebilirsin.');
+      else if (err.name === 'NotFoundError') addSys('Kamera veya mikrofon bulunamadı.');
+      else addSys('Kamera/mikrofon açılamadı: ' + err.name);
+      return;
+    }
+    wireCall(peer.call(conn.peer, stream, { metadata: { mode: video ? 'video' : 'audio' } }));
+  }
+  $('btnCallAudio').addEventListener('click', () => makeCall(false));
+  $('btnCallVideo').addEventListener('click', () => makeCall(true));
+  $('btnHangup').addEventListener('click', () => { if (currentCall) currentCall.close(); endCall(); });
+
+  // ---------- metin / resim mesajları ----------
+  function addMsg(text, isMe){
+    const row = document.createElement('div');
+    row.className = 'row ' + (isMe ? 'me' : '');
+    row.innerHTML = '<div class="bubble"></div>';
+    row.querySelector('.bubble').textContent = text;
+    $('messages').appendChild(row);
+    $('messages').scrollTop = $('messages').scrollHeight;
+  }
+  function addImg(dataUrl, isMe){
+    const row = document.createElement('div');
+    row.className = 'row ' + (isMe ? 'me' : '');
+    const b = document.createElement('div'); b.className = 'bubble';
+    const img = document.createElement('img'); img.src = dataUrl;
+    b.appendChild(img); row.appendChild(b);
+    $('messages').appendChild(row);
+    $('messages').scrollTop = $('messages').scrollHeight;
+  }
+  function addSys(text){
+    const el = document.createElement('div'); el.className = 'sys'; el.textContent = text;
+    $('messages').appendChild(el);
+    $('messages').scrollTop = $('messages').scrollHeight;
+  }
+
+  function sendText(){
+    const text = $('msgInput').value.trim();
+    if (!text || !conn) return;
+    conn.send({ type:'text', text });
+    addMsg(text, true);
+    $('msgInput').value = '';
+  }
+  $('btnSend').addEventListener('click', sendText);
+  $('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendText(); });
+
+  $('btnFile').addEventListener('click', () => $('fileInput').click());
+  $('fileInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file || !conn) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 900;
+        let { width: w, height: h } = img;
+        if (w > max || h > max){ const r = max / Math.max(w, h); w *= r; h *= r; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        conn.send({ type:'image', data: dataUrl });
+        addImg(dataUrl, true);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+
+  // ---------- manuel yedek yöntem (ham WebRTC, sunucu gerektirmez) ----------
+  function encode(desc){ return btoa(unescape(encodeURIComponent(JSON.stringify(desc)))); }
+  function decode(str){ return JSON.parse(decodeURIComponent(escape(atob(str.trim())))); }
+  function waitIce(c){
+    return new Promise(res => {
+      if (c.iceGatheringState === 'complete') return res();
+      c.addEventListener('icegatheringstatechange', () => { if (c.iceGatheringState === 'complete') res(); });
+      setTimeout(res, 3000);
+    });
+  }
+
+  $('manualUI').innerHTML = `
+    <label>1. Davet kodu oluştur:</label>
+    <button class="ghost" id="mCreateOffer">Davet Kodu Oluştur</button>
+    <textarea id="mOfferOut" readonly onclick="this.select()" style="display:none"></textarea>
+    <label>2. Karşı taraftan gelen cevap kodunu yapıştır:</label>
+    <textarea id="mAnswerIn" placeholder="Cevap kodu..."></textarea>
+    <button class="ghost" id="mFinish">Bağlantıyı Tamamla</button>
+    <hr style="border-color:var(--line); margin:14px 0">
+    <label>Ya da: sana gelen davet kodunu yapıştır</label>
+    <textarea id="mOfferIn" placeholder="Davet kodu..."></textarea>
+    <button class="ghost" id="mCreateAnswer">Cevap Kodu Oluştur</button>
+    <textarea id="mAnswerOut" readonly onclick="this.select()" style="display:none"></textarea>
+  `;
+
+  let mpc;
+  function createManualPC(){
+    const c = new RTCPeerConnection(rtcConfig);
+    c.onconnectionstatechange = () => {
+      if (c.connectionState === 'connected'){ $('status').textContent = 'Bağlandı'; $('status').classList.add('live'); }
+    };
+    return c;
+  }
+  function setupManualDC(dc){
+    dc.onopen = () => {
+      conn = { peer: null, send: obj => dc.send(JSON.stringify(obj)) };
+      $('status').textContent = 'Bağlandı'; $('status').classList.add('live');
+      $('connect').style.display = 'none';
+      $('chat').classList.add('active');
+      $('callbar').classList.remove('active'); // manuel modda arama yok, basitlik için
+      conn.send({ type:'hello', name: myName || 'Sen' });
+      addSys('Bağlantı kuruldu 🎉');
+    };
+    dc.onmessage = e => handleData(JSON.parse(e.data));
+  }
+  $('mCreateOffer').addEventListener('click', async () => {
+    myName = $('myName').value.trim() || 'Sen';
+    mpc = createManualPC();
+    setupManualDC(mpc.createDataChannel('chat'));
+    await mpc.setLocalDescription(await mpc.createOffer());
+    await waitIce(mpc);
+    $('mOfferOut').value = encode(mpc.localDescription);
+    $('mOfferOut').style.display = 'block';
+  });
+  $('mFinish').addEventListener('click', async () => {
+    try { await mpc.setRemoteDescription(new RTCSessionDescription(decode($('mAnswerIn').value))); }
+    catch(e){ alert('Kod okunamadı'); }
+  });
+  $('mCreateAnswer').addEventListener('click', async () => {
+    myName = $('myName').value.trim() || 'Sen';
+    let offer;
+    try { offer = decode($('mOfferIn').value); } catch(e){ alert('Kod okunamadı'); return; }
+    mpc = createManualPC();
+    mpc.ondatachannel = e => setupManualDC(e.channel);
+    await mpc.setRemoteDescription(new RTCSessionDescription(offer));
+    await mpc.setLocalDescription(await mpc.createAnswer());
+    await waitIce(mpc);
+    $('mAnswerOut').value = encode(mpc.localDescription);
+    $('mAnswerOut').style.display = 'block';
+  });
+})();
+</script>
+</body>
+</html>
